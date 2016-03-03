@@ -1,0 +1,1065 @@
+<&|/Widgets/TitleBox, title => loc('Kanban')&>
+
+
+
+<script type="text/javascript" src="/static/js/jquery-1.9.1.min.js"></script>
+<script type="text/javascript" src="/static/js/jquery-ui.min.js"></script>
+
+<script>
+
+
+//////////////////////GLOBAL VARIABLES
+  var ticketCache = {}; // all known tickets are stored in here
+  var ticketViewCache = {}; //after removing ticket Views are stored in here 
+  var autocompleteValues = []; //all values for the autocompletion
+  var hidden = []; //indices of removed ticketViews
+  var filter = {}; //those filters are used to restrict the shown tickets even more
+  var Columns = []; 
+  var ColumnLookup = {};
+  //Which priority should be set, be carefull before enabling this! 
+  //it uses the complete Integer range. 
+  var advancedPriority = false;
+  var currentUser = "<% $session{'CurrentUser'}->Name %>"; // the current user
+  var timeOffSet = 0;
+
+;
+//////////////////////TEMPLATES/////////////////////////
+  var templateDropdownLink = doT.template(`
+    <div id="DropdownLink" class="dropdown-content">
+     <span>
+      <label for="dependsOn">Depends on </label>
+      <input id="dependsOn" class="auto" type="text"></input> </span>
+      <label for="DependedOnBy">Depended on by</label>
+      <input id="DependedOnBy" class="auto"></input>
+      <label for="RefersTo">Refers to</label>
+      <input id="RefersTo" class="auto"></input>
+      <label for="ReferredToBy">Refers to by</label>
+      <input id="ReferredToBy" class="auto"></input>
+      <label for="HasMember">Children</label>
+      <input id="HasMember" class="auto"></input>
+      <label for="MemberOf">Parents</label>
+      <input id="MemberOf" class="auto"></input>
+    </div>
+    `);
+  var templateDropdownMerge = doT.template(`
+    <div id="DropdownMerge" class="dropdown-content">
+      <label for="merge">merge into</label>
+      <input id="merge" class="auto"></input>
+    </div>
+    `);
+  var templateTicket = doT.template(` 
+    <li id="{{=it.id}}" class="ticket">
+      <span class="task">
+        <span class="title-bar">{{=it.id}}
+          <span class="user" >
+          <span class = "dropdown">
+            <button onclick="showDropMerge(this, '{{=it.id}}')" class="dropbtn"> merge </button>
+            <button onclick="showDropLink(this, '{{=it.id}}')" class="dropbtn"> link </button>
+          </span>
+            <select style="background-color: {{=it.Color}}; color:{{=it.ColorInverse}}" class="user" onchange="setOwner('{{=it.id}}', this)">
+              <option style='color:black;background-color:#DDD' value="Nobody">Nobody</option> 
+% while ( my $user = $users->Next ) {
+    <option style='color:black;background-color:#DDD' value="<% $user->Name %>" 
+        {{? it.Owner == "<% $user->Name %>"}}
+            selected="selected"
+        {{?}}
+    ><% $user->Name %></option>
+%}
+            </select>
+          </span>
+        </span>
+        <span class="title" style="background-color: {{=it.ColorBright}}">
+          <a href="/Ticket/Display.html?id={{=it.id}}">{{=it.Subject}}</a>
+        </span>
+        <span class="footer">
+          <span class="estimate">
+            et:
+            <input type="number" align="right" onchange="saveTimeHours('{{=it.id}}', this)" min='0' class="value numedit" value="{{=it.hour}}"></input>
+            h
+            <input type="number"  align="right" onchange="saveTimeMinutes('{{=it.id}}', this)" min='0' max='59' class="value numedit" value="{{=it.minute}}"></input>
+            m
+          </span>
+          <span class="creator">Creator:
+            <span class="value">{{=it.Creator}}</span>
+          </span>
+        </span>
+      </span> 
+    </li>`);
+
+  var templateColumn = doT.template(`
+      <div id="div{{=it.Id}}" class="column">
+        <h3>{{=it.Name}}</h3>
+        <ul id="{{=it.Id}}" class="wipDrop tasks ui-sortable" style="cursor: hand;"></ul>
+      </div>
+    `);
+////////////////END TEMPLATES////////////////////
+
+
+/////////////////USERINPUT FOR SINGLE TICKETS///////////
+
+  //updates minutes
+  function saveTimeMinutes(userID, obj){
+      ticket = ticketCache[userID];
+      ticket['minute'] = parseInt($(obj).val());
+      saveTicketTime(ticket);
+  }
+  //updates hours
+  function saveTimeHours(userID, obj){
+      ticket = ticketCache[userID];
+      ticket['hour'] = parseInt($(obj).val());
+      saveTicketTime(ticket);
+  }
+
+
+  var timer = undefined;
+  var timerTicket = undefined;
+  //recalculates TimeEstimated and send information to the server
+  function saveTicketTime(ticket){
+    ticket['TimeEstimated'] = ticket['minute'] + 60* ticket['hour'];
+
+    var save = function(){
+      saveTicket(timerTicket['id'], 'TimeEstimated: ' + timerTicket['TimeEstimated']);
+      timerTicket = undefined;
+    }
+    if (timer != undefined){
+      clearTimeout(timer);
+    }
+    timer = setTimeout(save, 1000);
+    if (timerTicket != undefined && timerTicket != ticket){
+      saveTicket(timerTicket['id'], 'TimeEstimated: ' + timerTicket['TimeEstimated']);
+    }
+    timerTicket = ticket;
+  }
+
+
+
+
+  //sets the Owner of the ticket 
+  function setOwner(id, obj){
+      var ticket = ticketCache[id];
+      ticket['Owner'] = obj.options[obj.selectedIndex].value;
+      ticket["Color"] = "#" + intToRGB(parseInt("0x" + md5(ticket["Owner"]).substring(0,8)));
+      ticket["ColorInverse"] = invertColor(ticket["Color"]);
+
+      $(obj).css({'background-color':ticket["Color"],'color':ticket["ColorInverse"]});
+
+      var dataStr = "Owner: " + obj.options[obj.selectedIndex].value;
+      //update Ticket
+      saveTicket(id, dataStr);
+  }
+
+  const SHIFT = 135;
+  //Updates Priority and Status
+  function updatePS(id, status, Lane, shift){
+    var ticket = ticketCache[id];
+    var ticketField = $("#"+id);
+    var nextTicket = ticketCache[ticketField.next().attr('id')];
+
+    if (advancedPriority){
+      //Completly autark priority management
+      //Tickets are inserted at exactly the possition it was dropped therefore
+      //Tickets are garanted to have a unique priority within their current state
+      //Tickets are garanted to have a higher priority than all tickets below them
+      //Tickets are garanted to have a lower priority than all tickets above them
+      var prevTicket = ticketCache[ticketField.prev().attr('id')];
+      var nextPriority = -2147483648;
+      var prevPriority = 2147483647;
+
+      //get prev/next Priority
+      if (typeof nextTicket != 'undefined'){
+          nextPriority = parseInt(nextTicket['Priority']);
+      }
+      if (typeof prevTicket != 'undefined'){
+          prevPriority = parseInt(prevTicket['Priority']);
+      }
+      var divPriority = prevPriority - nextPriority;
+      //there is no int between prev- and next-Priority
+      if (divPriority <= 1){
+        if ((shift == '' && nextPriority > 0) || shift =='bottom') {
+            //shift bottom
+          ticket['Priority'] = prevPriority-SHIFT;
+          updatePS(nextTicket['id'], status, Lane, 'bottom');
+        }else{
+           // shift top
+          ticket['Priority'] = nextPriority+SHIFT;
+          updatePS(prevTicket['id'], status, Lane, 'top');
+        }
+      }else{
+      //new Priority:
+        ticket['Priority'] = nextPriority + Math.round(divPriority/2);
+      }
+    }else if (typeof nextTicket != 'undefined'){
+      //a way less strickt priority management.
+      //tickets are garanted to get a higher Priority than the ticket they where dropped before
+      //This means that the Position the ticket was dropped might not be the Possition the ticket
+      //Actually will be. Therefore the ticket might change its position imidiatly after beeing dropped.
+      if (ticket['Priority'] <= parseInt(nextTicket['Priority'])){
+        ticket['Priority'] = parseInt(nextTicket['Priority']) + 1;
+      }
+    }
+
+    ticket['Status'] = status;
+    var dataStr = "Status: " + status + "\n";            
+    dataStr += "Priority: " + ticket['Priority'];
+    //update Ticket
+    saveTicket(id, dataStr);
+    if (!advancedPriority){
+      updateTicketPosition(ticket);
+    }
+  }
+
+
+//DROPDOWN
+
+// Close the dropdown menu if the user clicks outside of it
+//window.onclick = function(event) {
+//  if (!event.target.matches('.dropbtn')) {
+//    $('#DropdownLink').remove();
+//    $('#DropdownMerge').remove(); 
+//  }
+//}
+$(document).keyup(function(e) {
+  if (e.keyCode == 27) { 
+    closeAllDropDown();
+  }
+});
+var linkDropDownOpen = false;
+
+function closeAllDropDown(){  
+    $("#DropdownMerge").remove();
+    $("#DropdownLink").remove();
+}
+
+function showDropLink(btn, id) {
+  if ($(btn).next().length == 0 || !linkDropDownOpen){
+    linkDropDownOpen = true;
+    closeAllDropDown();
+    var tropdown = templateDropdownLink();
+    $(btn).after(tropdown);
+    $('#dependsOn').focus();
+    dropdownMenu = tropdown;
+    $(".auto").bind( "keydown", function( event ) {
+      if (event != undefined){
+        if (event.keyCode === 13){
+          if (! $( this ).autocomplete( "instance" ).menu.active ) {
+            link(id, this.id, split($(this).val().trim()));
+            closeAllDropDown();
+          }
+        }else if ( event.keyCode === $.ui.keyCode.TAB &&
+            $( this ).autocomplete( "instance" ).menu.active ) {
+          event.preventDefault();
+        }
+      }
+    }).autocomplete({
+      minLength: 0,
+      delay: 0,
+      source: function( request, response ) {
+        // delegate back to autocomplete, but extract the last term
+        var results =$.ui.autocomplete.filter(
+          autocompleteValues, extractLast( request.term ) );
+
+        var allValues = split(request.term);
+        allValues = allValues.slice(0,allValues.length-1);
+
+        results = results.filter(function(el){
+          //filter the current ticket
+          if (el['value'] == id){
+            return false;
+          }
+          //filter all already entered tickets
+          return allValues.every(function(input){
+            return el['value'] != input;
+          });
+        });
+        //show a maximum of 10 results
+        response(results.slice(0,10));
+      },
+      focus: function() {
+        // prevent value inserted on focus
+        return false;
+      },
+      select: function( event, ui ) {
+        var terms = split( this.value );
+        // remove the current input
+        terms.pop();
+        // add the selected item
+        terms.push( ui.item.value );
+        // add placeholder to get the comma-and-space at the end
+        terms.push( "" );
+        this.value = terms.join( " " );
+        return false;
+      }
+    });
+  }else{
+    closeAllDropDown();
+  }
+  autocompleteValues.sort(function(a, b){return a['value']-b['value']});
+}
+
+
+function showDropMerge(btn, id) {
+  if ($(btn).next().next().length == 0 || linkDropDownOpen){
+    closeAllDropDown();
+    linkDropDownOpen = false;
+    var tropdown = templateDropdownMerge();
+    $(btn).parent().append(tropdown);
+    $('#merge').focus();
+    dropdownMenu = tropdown;
+    $(".auto").bind( "keydown", function( event ) {
+      if (event.keyCode == 13){
+        if (! $( this ).autocomplete( "instance" ).menu.active ) {
+          merge(id, split($(this).val().trim()));
+          closeAllDropDown();
+        }
+        return;
+      }
+      if ( event.keyCode === $.ui.keyCode.TAB &&
+          $( this ).autocomplete( "instance" ).menu.active ) {
+        event.preventDefault();
+      }
+    }).autocomplete({
+      minLength: 0,
+      delay: 0,
+      source: function( request, response ) {
+        // delegate back to autocomplete
+        var results =$.ui.autocomplete.filter(
+          autocompleteValues, request.term );
+        results = results.filter(function(el){
+        //filter the current ticket
+          if (el['value'] === id){
+            return false;
+          }
+          return true;
+        });
+        //show a maximum of 10 results
+        response(results.slice(0,10));
+      },
+      focus: function() {
+        // prevent value inserted on focus
+        return false;
+      },
+      select: function( event, ui ) {
+        var terms = split( this.value );
+        // remove the current input
+        terms.pop();
+        // add the selected item
+        terms.push( ui.item.value );
+        // add placeholder to get the comma-and-space at the end
+        terms.push( "" );
+        this.value = terms.join( " " );
+        return false;
+      }
+    });
+  }else{
+    closeAllDropDown();
+  }
+  autocompleteValues.sort(function(a, b){return a['value']-b['value']});
+}
+
+//////////////////USERINPUT FOR KANBAN //////////////
+  var fullscreen = false;
+  function toggleFullScreen(){
+    var main = $('#main');
+    //TODO load/unload external css file
+    if (!fullscreen){
+      main.css({'width':'100%', 'height':'100%', 'position':'fixed', 'top':'0', 'left':'0', 'z-index':'9000', 'background-color':'white', 'bottom':'0px', 'right':'0px'});
+      $('body').css('overflow', 'hidden');
+      $('#page-navigation').hide();
+      $('#main-navigation').hide();
+      $('ul.tasks').css('overflow-y', 'scroll');
+      $('#lanes').css('height', '80vh');
+      fullscreen = true;
+    }else{
+      main.css({'width':'', 'height':'', 'position':'', 'top':'', 'left':'', 'z-index':'', 'background-color':'', 'bottom':'', 'right':''});
+      $('#page-navigation').show();
+      $('#main-navigation').show();
+      $('body').css('overflow','');
+      $('ul.tasks').css('overflow-y', '');
+      $('#lanes').css('height', '');
+      fullscreen = false;
+    }
+  }
+
+//FILTERS  
+  //checks if the current Filter accepts this ticket
+  function testFilter(ticket){
+    for (i = 0; i < filters.length; i++){
+      attrName = filters[i];
+      //match a single word
+      function match (word){
+//        if (ticket[attrName].indexOf(RegExp(word)) == -1){
+//          return false;
+//        }
+//        return true;
+        return RegExp(word).test(ticket[attrName]);
+      }
+      //matches one of the words
+      if (filterWords[attrName].length > 0 && !filterWords[attrName].some(match)){
+          return false;
+      }
+    }
+    //matches all filters
+    return true;
+  }
+
+  //removes all tickets that don't apply to the filter object
+  function applyFilter(){
+    //removes all tickets that are 
+    $('.ticket').each(function(index){
+      var id = $(this).attr('id');
+      var ticket = ticketCache[id];
+      if (!testFilter(ticket)){
+        ticketViewCache[id] = this;
+        $(this).detach();
+        hidden.push(id);
+      }
+    });
+  }
+
+  var filters = [];
+  var filterWords = {};
+  //sets one attribute of the Filter to the value of the given <input>
+  function setFilter(name, input){
+    //set new filter
+    newVal = $(input).val().trim();
+    newWords = newVal.split(/\s+/).filter(Boolean);
+    filter[name] = newVal;
+    filters = Object.keys(filter)
+
+    filterWords[name] = newWords;
+
+    //check the visible elements
+    var newHidden = [];
+    $('.ticket').each(function(index){
+      var id = $(this).attr('id');
+      var ticket = ticketCache[id];
+      if (!testFilter(ticket)){
+        ticketViewCache[id] = this;
+        $(this).detach();
+        newHidden.push(id);
+      }
+    });
+    //check the hidden elements
+    hidden.forEach(function(id, index){
+      var ticket = ticketCache[id];
+      if (testFilter(ticket)){
+        insertTicket(ticket, ticketViewCache[id]);
+      }else{
+        newHidden.push(id);
+      }
+    });
+    //set new hidden elements
+    hidden = newHidden;
+  }
+
+  function clearFilter(){
+    $('.filter').val('');
+    $('.filter').keyup();
+    filters = {};
+  }
+
+//////////////////////UTIL//////////////////////////
+
+  function binarylower(obj, f, m, l, u) {
+    var mid;
+    if(l<=u)
+    {
+      mid=Math.floor((l+u)/2);
+      if (obj[mid] == undefined){
+        return l;
+      }
+      if(m > f(obj[mid])) {
+        return binarylower(obj,f,m,l,mid-1);
+      }
+      else {
+        return binarylower(obj,f,m,mid+1,u);
+      }
+    } else {
+      return l;
+    }
+  }
+  //checks if two objects are equal
+  function needsUpdate(a, b) {
+    if (a == undefined || b == undefined){
+      return true;
+    }
+    var Props = ["Queue", "Subject", "Owner", "Creator", "TimeEstimated", "Status", "Priority"];
+
+    for (var i = 0; i < Props.length; i++) {
+      var propName = Props[i];
+      if (a[propName] != b[propName]) {
+        console.log(a[propName] + " != " +  b[propName]);
+        return true;
+      }
+    }
+    return false;
+  }
+
+
+  //returns the query (sets Date and CurrentUser)
+  function getQuery(string){
+    var d = new Date();
+    d.setDate(d.getDate() - timeOffSet);
+    var date = d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate();
+    var it = {
+      Date: date,
+      CurrentUser: currentUser
+    };
+    return doT.template(string)(it);
+  }
+
+  //deletes a ticket from all caches
+  function deleteTicket(ticket){
+    if (ticket != undefined){
+      var id = ticket['id'];
+      console.log('delete: ' + id);
+      var index = -1;
+      for (var i = 0; i < autocompleteValues.length; i++){
+        if (autocompleteValues[i]['value'] == id){
+          index = i;
+          i = autocompleteValues.length;
+          console.log('autocomplete found');
+          console.log(autocompleteValues[i]);
+        }
+      }
+      if (index > -1){
+        autocompleteValues.splice(index, 1);
+      }
+      delete ticketCache[id];
+      delete ticketViewCache[id];
+      $("#" + id).remove();
+    }
+  }
+
+  //AUTOCOMPLETION
+  function split( val ) {
+    return val.split( /\s+/ );
+  }
+  function extractLast( term ) {
+    return split( term ).pop();
+  }
+
+//Ilustrat stuff
+  function invertColor(hexTripletColor) {
+      var color = hexTripletColor;
+      color = color.substring(1);           // remove #
+      color = parseInt(color, 16);          // convert to integer
+      color = 0xFFFFFF ^ color;             // invert three bytes
+      color = color.toString(16);           // convert to hex
+      color = ("000000" + color).slice(-6); // pad with leading zeros
+      color = "#" + color;                  // prepend #
+      return color;
+  }
+
+  //converts an integer to an Color
+  //is used to convert hashes to colors
+  function intToRGB(i){
+    var c = (i & 0x00FFFFFF)
+      .toString(16)
+      .toUpperCase();
+
+    return "00000".substring(0, 6 - c.length) + c;
+  }
+  function intToBrightRGB(i){
+    var c = ((~(i & 0x003F3F3F)) & 0x00FFFFFF)
+      .toString(16)
+      .toUpperCase();
+
+    return "00000".substring(0, 6 - c.length) + c;
+  }
+
+//////////////////////REST CONNECTION///////////////
+  function merge(id, arr){
+    if (arr.length > 0){
+      arr.forEach(function(val){
+        if (!isNaN(val) &&  val != ""){
+          $.ajax({
+            url: "./REST/1.0/ticket/" + id + "/merge/" + val,
+            cache: false,
+            success: function(data, status, jqXHR){
+              getAndUpdateTicket(id);
+              getAndUpdateTicket(val);
+              if (data.indexOf("200 Ok") == -1 && data != ""){
+                alert(data);
+              }
+            },
+            error: function( jqXHR, textStatus, errorThrown ){
+              getAndUpdateTicket(id);
+              getAndUpdateTicket(val);
+              alert("XHR request returned: " + textStatus);
+            },
+            dataType: 'text'
+          });
+        }
+      });
+    }
+  }
+  function link(id, rel, arr){
+    if (arr.length > 0){
+      arr.forEach(function(val){
+        if (!isNaN(val) && val != ""){
+          var data = {
+            id: id,
+            rel: rel,
+            to: val
+          }
+          $.ajax({
+            url: "./REST/1.0/ticket/link",
+            data: data,
+            cache: false,
+            success: function(data, status, jqXHR){
+              if (data.indexOf("200 Ok") == -1 && data != ""){
+                alert(data);
+              }
+            },
+            error: function( jqXHR, textStatus, errorThrown ){
+              alert("XHR request returned: " + textStatus);
+            },
+            dataType: 'text'
+          });
+        }
+      });
+    }
+  }
+
+  //send ticket changes to the server
+  function saveTicket(id, dataStr){
+    var data = {
+      content: dataStr
+    }
+    var realId = id; 
+    (function(id){
+      $.ajax({
+        url: "./REST/1.0/ticket/" + realId + "/edit",
+        data: data,
+        cache: false,
+        success: function(data, status, jqXHR){
+
+          if (data.indexOf("200 Ok") == -1 && data != ""){
+            getAndUpdateTicket(id);
+            alert(data);
+          }
+        },
+        error: function( jqXHR, textStatus, errorThrown ){
+          getAndUpdateTicket(id);
+          alert("XHR request returned: " + textStatus);
+        },
+        dataType: 'text'
+      });
+    })(id);
+  }
+
+  var Queues = ['General', 'FOO', 'FOOB'];
+  function createRandomTickets(){
+    for (var i = 0; i < 100; i++){
+      var dataStr = "";
+      dataStr += "status: " + Columns[Math.floor(Math.random()*4)]['Status'][0] + "\n";
+      dataStr += "Subject: Random Generated Ticket Number: " + i + "\n";
+      dataStr += "Queue: " + Queues[Math.floor(Math.random()*Queues.length)] + "\n";
+
+      var data = {
+        content: dataStr
+      }
+
+      $.ajax({
+        url: "./REST/1.0/ticket/new" ,
+        data: data,
+        cache: false,
+        success: function(data, status, jqXHR){
+          console.log('new ticket created');
+        },
+        error: function( jqXHR, textStatus, errorThrown ){
+          console.log(errorThrown);
+        },
+        dataType: 'text'
+      });
+    }
+  }
+
+  //gets a ticket and checks if it needs an update.
+  function getAndUpdateTicket(id){
+    var query = '((' + Columns[0]['Query'] + ')';
+    for (var i = 1; i < Columns.length; i++){
+      query += 'OR (' + Columns[i]['Query'] + ')';
+    }
+    query += ') AND id=' + id;
+    query = getQuery(query);
+    query += "&orderby=-Priority&format=l";
+
+    (function(id){
+      $.ajax({
+        url:"./REST/1.0/search/ticket?query=" + query,
+        async: true,
+        success: function (output) {
+          var split = output.split("--");
+          if (split.length > 0){
+            if (split.length > 1){
+              console.log('error: ticketID is not unique');
+            }
+            var oldTicket = ticketCache[id];
+            var newTicket = parseTicket(split[0]);
+            if (newTicket == undefined){
+              console.log("ticket: " + id + " undefined and therefore deleted");
+              //ticket got deleted
+              //remove ticket from caches and the view
+              deleteTicket(oldTicket);
+              return;
+            }
+            if (oldTicket == undefined){
+              //ticket is new
+              console.log("new ticket: " + id);
+              updateTicketPosition(newTicket);
+              return;
+            }
+            if (needsUpdate(oldTicket, newTicket)){
+              console.log("ticket updated: " + id);
+              if (oldTicket['Priority'] === newTicket['Priority'] && oldTicket['Status'] === newTicket['Status']){
+                //priority is unchanged
+                //replace ticket
+                ticketCache[id] = newTicket;
+                $("#"+newTicket['id']).replaceWith(templateTicket(newTicket));
+                //TODO check filters
+              }else{
+                //priority is changed
+                //find new position of the ticket
+                updateTicketPosition(newTicket);
+              }
+            }
+          }else{
+            console.log("ticket: " + id + " deleted");
+            deleteTicket(oldTicket);
+          }
+        },
+        error: function( jqXHR, textStatus, errorThrown ){
+          console.log(errorThrown);
+          alert("XHR request returned: " + textStatus);
+        }
+      });
+    })(id);
+  }
+
+  //rest output => javascript object
+  function parseTicket(str){
+    var keyValue = str.split("\n");
+    var ticket = {};
+    for (var i = 0; i < keyValue.length; i++){
+      if (keyValue[i].indexOf(":") != -1){
+        var split = keyValue[i].split(":");
+        var key = split.shift().trim();
+        var value = split.join(":").trim();
+        ticket[key] = value;
+      }
+    }
+    //check if this is a ticket
+    if (ticket['id'] == undefined){
+      return undefined;
+    }
+    ticket['Priority'] = parseInt(ticket['Priority']);
+    ticket["Color"] = "#" + intToRGB(parseInt("0x" + md5(ticket["Owner"]).substring(0,8)));
+    ticket["ColorInverse"] = invertColor(ticket["Color"]);
+    ticket["ColorBright"] =  "#" + intToBrightRGB(parseInt("0x" + md5(ticket["Queue"]).substring(0,8)));
+    ticket['id'] = ticket['id'].split('/')[1];
+    ticket['TimeEstimated'] = ticket['TimeEstimated'].split(' ')[0];
+    ticket['hour'] = Math.floor( parseInt(ticket['TimeEstimated']) / 60);
+    ticket['minute'] = parseInt(ticket['TimeEstimated']) % 60;
+    return ticket;
+  }
+  //removes old ticket and creates new one
+  function updateTicketPosition(ticket){
+    //update cache
+    ticketCache[ticket['id']] = ticket;
+    //remove old view
+    $("#" + ticket['id']).remove();
+    //create new view
+    var newTicketView = templateTicket(ticket);
+    insertTicket(ticket, newTicketView);
+  }
+  //inserts a ticket and recalculate the correct possition
+  function insertTicket(ticket, newTicketView){
+    var column = ColumnLookup[ticket['Status']].children();
+  //  console.log(column.length);
+    //console.log(column);
+  //  console.log(newTicketView);
+    if (column.length > 0){ //insert via binary search
+      var getPriority = function(ticketView){
+        //return ticketCache[$(ticketView).attr('id')]['Priority'];
+        return ticketCache[ticketView.id]['Priority'];
+      }
+      var index = binarylower(column, getPriority, ticket['Priority'], 0, column.length);
+
+      if (index >= column.length){
+        ColumnLookup[ticket['Status']].append(newTicketView);      
+      }else {
+        $(column[index]).before(newTicketView);
+      }
+    }else{//it's the first element, just insert it
+        ColumnLookup[ticket['Status']].append(newTicketView);  
+    }
+  }
+
+//  function updateTicket(n){
+//    var xmlhttp=new XMLHttpRequest();
+//    xmlhttp.open("GET", "./REST/1.0/ticket/"+n+"/show", true);
+//    xmlhttp.send();
+//    xmlhttp.onreadystatechange=function() {
+//      if (xmlhttp.readyState==4 && xmlhttp.status==200) {
+//        var ticket = parseTicket(xmlhttp.responseText);
+//        initTicket(ticket);
+//      }
+//    };
+//  }
+
+
+
+///////////////////////INIT///////////////////
+
+  //function initAutocomplete(){
+  //    console.log('foo');
+  //  for(var id in ticketCache) {
+  //    console.log('foo');
+  //    var ticket = ticketCache[id];
+  //    autocompleteValues.push({label: "#" + id + ': ' + ticket['Subject'], value: id});
+  //  }
+  //}
+
+  function initTicket(ticket){
+    if (ticketCache[ticket["id"]] == undefined){
+      var newTicketView = templateTicket(ticket);
+      ticketCache[ticket['id']] = ticket;            
+      autocompleteValues.push({label: "#" + ticket['id'] + ': ' + ticket['Subject'], value: ticket['id']});      
+      if (!testFilter(ticket)){
+        ticketViewCache[ticket['id']] = newTicketView;
+        hidden.push(ticket['id']);
+      }else{
+        ColumnLookup[ticket['Status']].append(newTicketView);
+      }
+    }else{
+      console.log("Only use this function during the init calls");
+    }
+  }
+
+  function initColumns() {
+    var lanes = $('#lanes');
+
+    for (var i = 0; i < Columns.length; i++){
+      Columns[i]['Id'] = "Column_" + i; 
+      lanes.append(templateColumn(Columns[i]));
+      var thisLane = $("#" + Columns[i]['Id']);
+      (function(outerStatus, thisLane){
+        thisLane.sortable({
+          connectWith: [".wipDrop"], 
+          placeholder: "drop-area",
+          receive:function (event, ui) {
+            updatePS(ui["item"]["context"]["id"], outerStatus, thisLane, '');
+          },
+          start: function(event, ui) {
+            ui.item.data('start_pos', ui.item.index());
+          },
+          stop: function (event, ui) {
+            var start_pos = ui.item.data('start_pos');
+            if (start_pos != ui.item.index()) {
+              if (ui['item']['context'].parentElement == event['target']){
+                updatePS(ui["item"]["context"]["id"], outerStatus, thisLane, '');
+              }
+            }
+          },
+          active: function(event, ui){
+            console.log('hello wolrd');
+            closeAllDropDown();
+          },
+          scroll: true,
+          items: 'li',
+          //scrollSensitivity: 20,
+          //scrollSpeed: 20, 
+          tolerance: "pointer",
+          opacity: 0.9 ,
+          over: function (event, ui) {
+            ui.item.data('sortableItem').scrollParent = ui.placeholder.parent();
+            ui.item.data('sortableItem').overflowOffset = ui.placeholder.parent().offset();
+          }
+        });
+      })(Columns[i]['Status'][0], thisLane);
+      
+      var stati = Columns[i]['Status'];
+      for (var j = 0; j < stati.length; j++){
+        ColumnLookup[stati[j]] = thisLane;
+      }
+    }
+  //  var width = Columns.length * 295;
+  //  lanes.css({"width":width});
+  }
+
+  function updateView() {
+    for (var i = 0; i < Columns.length; i++){
+      var url = "./REST/1.0/search/ticket?query=" + getQuery(Columns[i]['Query'])+"&orderby=-Priority&format=l";
+      $.ajax({
+        url: url,
+        async: true,
+        success: function (output) {
+          var split = output.split("--");
+          for (var i = 0; i < split.length; i++){
+            if (split[i].indexOf(":") != -1){
+              var ticket = parseTicket(split[i]);
+              initTicket(ticket);
+            }
+          }
+          //TODO error handling
+        }
+      });
+    }
+  };
+
+var sequence = undefined;
+
+  function initWebsockets(){
+    // BUG hardcoded path
+    var path = location.protocol.replace('http', 'ws') + location.hostname;
+%if ($myPort != -1){
+    path += ":<%$myPort%>";
+%}else{
+    path += location.port;
+%}
+    path += location.pathname + "websocket";
+
+    var ws = new ReconnectingWebSocket(path);
+
+    ws.onopen = function () {
+      console.log('Connection opened');
+      $('#wsIndicator').removeClass('circle_red').addClass('circle_green');
+
+      setInterval(function() {
+        ws.send("Keep alive from client"  );
+      }, 200000 );
+    };
+
+    ws.onmessage = function (msg) {
+      
+      var res = JSON.parse(msg.data).updateTicket;
+      console.log(res);
+    
+      if (!isNaN(res.sequence)) {
+        if (sequence == undefined && res['id'] == undefined) {
+          console.log("setting sequence: " + sequence)
+          sequence = res.sequence;
+        } else if (sequence != res.sequence){
+          location.reload();
+        }
+      }
+     
+      if (res['id'] != undefined && !isNaN(res.id)){
+        console.log("updateTicket: " + res.id);
+        getAndUpdateTicket(res.id);
+        sequence++;
+      }  
+    };
+    ws.onclose = function (msg) {
+     $('#wsIndicator').removeClass('circle_green').addClass('circle_red');
+      console.log('Connection closed');
+    };
+
+  }
+
+//builds the kanban when the page has loaded
+  $(document).ready(function() {
+    //get configuration
+    var config = JSON.parse($('<textarea />').html(`<% $config %>`).text());
+    //time offset
+    timeOffSet = config['timeOffSet'];
+    //initiate columns
+    Columns = config['lanes'];
+    initColumns();
+    //Get Tickets
+    updateView(); 
+    //initiate the filters
+    $('.filter').keyup();
+    //init websockets
+    initWebsockets();   
+  });
+
+  $(window).resize(function(){
+    //$('span').text(x += 1);
+    console.log("resize");
+  }); 
+
+</script>
+
+  <div id="main">
+
+    <button onclick='clearFilter()'> clear all filter </button>
+    <span>Owner: <input type="text" class="filter" onkeyup="setFilter('Owner', this)"></input></span>
+    <span>Subject: <input type="text" class="filter" onkeyup="setFilter('Subject', this)"></input></span>
+    <span>Queue: <input type="text" class="filter" onkeyup="setFilter('Queue', this)"></input></span>
+    <span>ID: <input type="text" class="filter" onkeyup="setFilter('id', this)"></input></span>
+    <span class="wsStatus">WebSocket status: <span id="wsIndicator" class="circle_red"></span></span>
+    <div id="lanes">
+    </div>
+    <button onclick="toggleFullScreen()"> toggle full screen </button>
+    <button onclick="createRandomTickets()"> random 100 </button>
+  </div>
+</&>
+
+<%INIT>
+my $users = RT::Users->new($session{'CurrentUser'});
+$users->LimitToPrivileged;
+
+
+
+# default configuration
+my $config = q(
+{
+  "lanes":[
+    {
+      "Name": "New Open",
+      "Id": "lineNew",
+      "Status": ["open", "new"],
+      "Query": "(Status='open' OR Status='new')"
+    },
+    {
+      "Name": "Stalled",
+      "Id": "lineStalled",
+      "Status": ["stalled"],
+      "Query": "(Status='stalled')"
+    },
+    {
+      "Name": "Resolved",
+      "Id": "lineResolve",
+      "Status": ["resolved"],
+      "Query": "(Status='resolved') AND (LastUpdated > '{{=it.Date}}')"
+    },
+    {
+      "Name": "Rejected",
+      "Id": "lineReject",
+      "Status": ["rejected"],
+      "Query": "(Status='rejected') AND (LastUpdated > '{{=it.Date}}')"
+    }
+  ],
+  "timeOffSet":7
+});
+
+# override default configuration if it is set
+if (RT->Config->Get('KanbanDefault')){
+  $config = RT->Config->Get('KanbanDefault');
+}
+
+# override default configuration with user specific configuration
+my $userName = $session{'CurrentUser'}->Name;
+my $userConfig = "Kanban_" . $userName;
+if (RT->Config->Get($userConfig)){
+  $config = RT->Config->Get($userConfig);
+}
+
+my $myPort = -1;
+if (RT->Config->Get("WebsocketPort")){
+  $myPort = RT->Config->Get("WebsocketPort");
+}
+
+
+</%INIT>
+<%ARGS>
+$Name => 'Users'
+
+</%ARGS>
+
+%#$users->WhoHaveRight( 
+%#    Right => 'OwnTicket'
+%#    IncludeSystemRights => 1);
