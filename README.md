@@ -13,7 +13,7 @@ RT-Extension-Kanban - Adds a Kanban to 'request tracker' which uses jQuery UI an
 
 - Clear your mason cache
     ```sh
-    rm -rf /opt/rt4/var/mason_data/obj
+    rm -rf /opt/rt4/var/mason_data/obj/*
     ```
 - Restart your webserver serving RT
 
