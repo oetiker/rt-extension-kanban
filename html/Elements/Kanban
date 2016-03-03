@@ -994,7 +994,7 @@ var sequence = undefined;
     <div id="lanes">
     </div>
     <button onclick="toggleFullScreen()"> toggle full screen </button>
-    <button onclick="createRandomTickets()"> random 100 </button>
+    <!-- <button onclick="createRandomTickets()"> random 100 </button> -->
   </div>
 </&>
 
