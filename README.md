@@ -2,6 +2,9 @@
 
 RT-Extension-Kanban - Adds a Kanban to 'request tracker' which uses jQuery UI and Websockets for data visualization.
 
+![A screenshot featuring the Kanban view with WebSocket status](https://raw.githubusercontent.com/nixcloud/rt-extension-kanban/master/screenshots/kanban.jpg)
+
+
 # INSTALLATION
 
 - perl Makefile.PL
