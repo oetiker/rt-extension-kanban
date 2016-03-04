@@ -917,7 +917,7 @@ var sequence = undefined;
 %if ($myPort != -1){
     path += ":<%$myPort%>";
 %}else{
-    path += location.port;
+    path += ":"+location.port;
 %}
     path += location.pathname + "websocket";
 
