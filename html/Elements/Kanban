@@ -764,6 +764,7 @@ function showDropMerge(btn, id) {
     ticket['TimeEstimated'] = ticket['TimeEstimated'].split(' ')[0];
     ticket['hour'] = Math.floor( parseInt(ticket['TimeEstimated']) / 60);
     ticket['minute'] = parseInt(ticket['TimeEstimated']) % 60;
+    ticket['Creator'] = ticket['Creator'].substring(0,10);
     return ticket;
   }
   //removes old ticket and creates new one
