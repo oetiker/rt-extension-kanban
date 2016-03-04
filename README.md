@@ -153,6 +153,12 @@ All bugs should be reported to our BUG-tracker at:
 
 * <https://github.com/nixcloud/rt-extension-kanban>
 
+# THANKS
+* [LiHAS Stuttgart](http://www.lihas.de/) for sponsoring this work
+* [Bob Cravens](http://bobcravens.com/) for his kanban example and letting us use it
+* Christian Loos <cloos@netcologne.de> for his help with RT
+* Shawn Moore <shawn@bestpractical.com> for his help with RT
+
 # LICENSE AND COPYRIGHT
 
 This software is Copyright (c) 2016 by Joachim Schiele/Paul Seitz
