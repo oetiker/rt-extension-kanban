@@ -209,7 +209,7 @@ span.user > select{
 	border-color: #CCC;
 
 	text-align: left;
-    left: -30px;
+    left: -8em;
     position: absolute;
     background-color: #DDD;
     min-width: 160px;

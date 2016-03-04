@@ -52,11 +52,14 @@
       <span class="task">
         <span class="title-bar">{{=it.id}}
           <span class="user" >
-          <span class = "dropdown">
-            <button onclick="showDropMerge(this, '{{=it.id}}')" class="dropbtn"> merge </button>
-            <button onclick="showDropLink(this, '{{=it.id}}')" class="dropbtn"> link </button>
+            <span class = "dropdown">
+              <button onclick="showDropMerge(this, '{{=it.id}}')" class="dropbtn"> merge </button>
+              <button onclick="showDropLink(this, '{{=it.id}}')" class="dropbtn"> link </button>
+            </span>
           </span>
-            <select style="background-color: {{=it.Color}}; color:{{=it.ColorInverse}}" class="user" onchange="setOwner('{{=it.id}}', this)">
+        </span>
+        <span class="title-bar" style=" height: 1.5em; Display: block">
+            <select style="background-color: {{=it.Color}}; color:{{=it.ColorInverse}}; float: right" class="user" onchange="setOwner('{{=it.id}}', this)">
               <option style='color:black;background-color:#DDD' value="Nobody">Nobody</option> 
 % while ( my $user = $users->Next ) {
     <option style='color:black;background-color:#DDD' value="<% $user->Name %>" 
@@ -66,7 +69,6 @@
     ><% $user->Name %></option>
 %}
             </select>
-          </span>
         </span>
         <span class="title" style="background-color: {{=it.ColorBright}}">
           <a href="/Ticket/Display.html?id={{=it.id}}">{{=it.Subject}}</a>
