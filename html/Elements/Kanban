@@ -58,7 +58,7 @@
             </span>
           </span>
         </span>
-        <span class="title-bar" style=" height: 1.5em; Display: block">
+        <span class="title-bar" style="  height: 1.6em; Display: block">
             <select style="background-color: {{=it.Color}}; color:{{=it.ColorInverse}}; float: right" class="user" onchange="setOwner('{{=it.id}}', this)">
               <option style='color:black;background-color:#DDD' value="Nobody">Nobody</option> 
 % while ( my $user = $users->Next ) {
@@ -268,7 +268,7 @@ function showDropLink(btn, id) {
           if (el['value'] == id){
             return false;
           }
-          //filter all already entered tickets
+          //filter all already entered tickets  
           return allValues.every(function(input){
             return el['value'] != input;
           });
