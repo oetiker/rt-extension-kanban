@@ -58,7 +58,7 @@
             </span>
           </span>
         </span>
-        <span class="title-bar" style="  height: 1.6em; Display: block">
+        <span class="title-bar" style="  height: 1.7em; Display: block">
             <select style="background-color: {{=it.Color}}; color:{{=it.ColorInverse}}; float: right" class="user" onchange="setOwner('{{=it.id}}', this)">
               <option style='color:black;background-color:#DDD' value="Nobody">Nobody</option> 
 % while ( my $user = $users->Next ) {
@@ -71,7 +71,7 @@
             </select>
         </span>
         <span class="title" style="background-color: {{=it.ColorBright}}">
-          <a href="/Ticket/Display.html?id={{=it.id}}">{{=it.Subject}}</a>
+          <a href="./Ticket/Display.html?id={{=it.id}}">{{=it.Subject}}</a>
         </span>
         <span class="footer">
           <span class="estimate">
