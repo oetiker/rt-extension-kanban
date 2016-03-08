@@ -146,7 +146,7 @@ The following example defines two Kanbans. The first one features a lane `IMPORT
 
 The second Kanban features a lane with open/new tickets that have no owner. Also there are two additional lanes for the user `foo` and `bar`. If a ticket is moved into `foo` the owner is changed to `foo`. The same happens with the `bar` lane.
 
-```javascript
+```
 Set( %KanbanConfigs, (
 important => q(
 {
