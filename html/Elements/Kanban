@@ -13,13 +13,12 @@
   var hidden = []; //indices of removed ticketViews
   var filter = {}; //those filters are used to restrict the shown tickets even more
   var Columns = []; 
-  var ColumnLookup = {};
+//  var ColumnLookup = {};
   //Which priority should be set, be carefull before enabling this! 
   //it uses the complete Integer range. 
   var advancedPriority = false;
   var currentUser = "<% $session{'CurrentUser'}->Name %>"; // the current user
-  var timeOffSet = 0;
-
+  var config = "";
 //////////////////////TEMPLATES/////////////////////////
   var templateDropdownLink = doT.template(`
     <div id="DropdownLink" class="dropdown-content">
@@ -44,19 +43,25 @@
       <input id="merge" class="auto"></input>
     </div>
     `);
-  var templateTicket = doT.template(` 
+  var templateTicket = doT.template(`
     <li id="{{=it.id}}" class="ticket">
       <span class="task">
         <span class="title-bar">{{=it.id}}
           <span class="user" >
             <span class = "dropdown">
+% if (!$readOnly){
               <button onclick="showDropMerge(this, '{{=it.id}}')" class="dropbtn"> merge </button>
               <button onclick="showDropLink(this, '{{=it.id}}')" class="dropbtn"> link </button>
+%}
             </span>
           </span>
         </span>
-        <span class="title-bar" style="  height: 1.7em; Display: block">
-            <select style="background-color: {{=it.Color}}; color:{{=it.ColorInverse}}; float: right" class="user" onchange="setOwner('{{=it.id}}', this)">
+% if ($readOnly){
+        <span class="title-bar" style="background-color: {{=it.Color}}"> 
+          <span style="float: right; background-color: {{=it.Color}}; Display: block">   {{=it.Owner}}</span> 
+%}else{
+        <span class="title-bar" style="  height: 1.7em; Display: block;">
+          <select style="background-color: {{=it.Color}}; color:{{=it.ColorInverse}}; float: right; text-align: right" class="user" onchange="setOwner('{{=it.id}}', this)">
               <option style='color:black;background-color:#DDD' value="Nobody">Nobody</option> 
 % while ( my $user = $users->Next ) {
     <option style='color:black;background-color:#DDD' value="<% $user->Name %>" 
@@ -65,18 +70,23 @@
         {{?}}
     ><% $user->Name %></option>
 %}
-            </select>
+          </select>
+%}
         </span>
         <span class="title" style="background-color: {{=it.ColorBright}}">
           <a href="<%RT->Config->Get('WebPath')%>/Ticket/Display.html?id={{=it.id}}">{{=it.Subject}}</a>
         </span>
         <span class="footer">
           <span class="estimate">
+% if ($readOnly){
+  et: {{=it.hour}}h {{=it.minute}}m
+%} else{
             et:
             <input type="number" align="right" onchange="saveTimeHours('{{=it.id}}', this)" min='0' class="value numedit" value="{{=it.hour}}"></input>
             h
             <input type="number"  align="right" onchange="saveTimeMinutes('{{=it.id}}', this)" min='0' max='59' class="value numedit" value="{{=it.minute}}"></input>
             m
+%}
           </span>
           <span class="creator">Creator:
             <span class="value">{{=it.Creator}}</span>
@@ -149,8 +159,9 @@
 
   const SHIFT = 135;
   //Updates Priority and Status
-  function updatePS(id, status, Lane, shift){
+  function updatePS(id, LaneObject, Lane, shift, laneID){
     var ticket = ticketCache[id];
+    ticket.lane = laneID;
     var ticketField = $("#"+id);
     var nextTicket = ticketCache[ticketField.next().attr('id')];
 
@@ -177,11 +188,11 @@
         if ((shift == '' && nextPriority > 0) || shift =='bottom') {
             //shift bottom
           ticket['Priority'] = prevPriority-SHIFT;
-          updatePS(nextTicket['id'], status, Lane, 'bottom');
+          updatePS(nextTicket['id'], status, Lane, 'bottom', laneID);
         }else{
            // shift top
           ticket['Priority'] = nextPriority+SHIFT;
-          updatePS(prevTicket['id'], status, Lane, 'top');
+          updatePS(prevTicket['id'], status, Lane, 'top', laneID);
         }
       }else{
       //new Priority:
@@ -197,9 +208,27 @@
       }
     }
 
-    ticket['Status'] = status;
-    var dataStr = "Status: " + status + "\n";            
-    dataStr += "Priority: " + ticket['Priority'];
+
+    var change = LaneObject.Change;
+    var keys = Object.keys(change);
+    var dataStr = "";
+
+    if ("CallOnEnter" in LaneObject){
+      var f = new Function("ticket", getQuery(LaneObject.CallOnEnter, LaneObject.timeOffSet));
+      var update = f(ticket);
+
+      for (var i = 0; i < update.length; i++){
+        dataStr += update[i] + ": " + ticket[update[i]] + "\n";
+      }
+    }
+
+    dataStr += "Priority: " + ticket['Priority']+"\n";
+
+    for (var i = 0; i < keys.length; i++){
+      ticket[keys[i]] = getQuery(change[keys[i]]);
+      dataStr += keys[i] + ": " + getQuery(change[keys[i]], Columns[i].timeOffSet) + "\n";
+    }    
+
     //update Ticket
     saveTicket(id, dataStr);
     if (!advancedPriority){
@@ -402,18 +431,18 @@ function showDropMerge(btn, id) {
   }
 
   //removes all tickets that don't apply to the filter object
-  function applyFilter(){
-    //removes all tickets that are 
-    $('.ticket').each(function(index){
-      var id = $(this).attr('id');
-      var ticket = ticketCache[id];
-      if (!testFilter(ticket)){
-        ticketViewCache[id] = this;
-        $(this).detach();
-        hidden.push(id);
-      }
-    });
-  }
+ // function applyFilter(){
+ //   //removes all tickets that are 
+ //   $('.ticket').each(function(index){
+ //     var id = $(this).attr('id');
+ //     var ticket = ticketCache[id];
+ //     if (!testFilter(ticket)){
+ //       ticketViewCache[id] = this;
+ //       $(this).detach();
+ //       hidden.push(id);
+ //     }
+ //   });
+ // }
 
   var filters = [];
   var filterWords = {};
@@ -434,7 +463,11 @@ function showDropMerge(btn, id) {
       var ticket = ticketCache[id];
       if (!testFilter(ticket)){
         ticketViewCache[id] = this;
-        $(this).detach();
+ //       this.remove();
+   //     $(this).empty();
+        $(this).remove();
+   //     $(this).detach();
+  //      console.log('hidden push: ' + id);
         newHidden.push(id);
       }
     });
@@ -442,8 +475,11 @@ function showDropMerge(btn, id) {
     hidden.forEach(function(id, index){
       var ticket = ticketCache[id];
       if (testFilter(ticket)){
+     //   var newView = templateTicket(ticket);
+     //   insertTicket(ticket, newView);
         insertTicket(ticket, ticketViewCache[id]);
       }else{
+  //      console.log('hidden push: ' + id);
         newHidden.push(id);
       }
     });
@@ -458,7 +494,26 @@ function showDropMerge(btn, id) {
   }
 
 //////////////////////UTIL//////////////////////////
+  var ticketFields = [/id/g, /Queue/g, /Owner/g, /Creator/g, /Subject/g, /Status/g, /Priority/g, /InitialPriority/g, /FinalPriority/g, /Requestors/g, /Created/g, /Starts/g, /Started/g, /Due/g, /Resolved/g, /Told/g, /LastUpdated/g, /TimeEstimated/g, /TimeWorked/g, /TimeLeft/g, /Cc/g, /AdminCc/g];
+  var ticketFieldsString = ['id', 'Queue', 'Owner', 'Creator', 'Subject', 'Status', 'Priority', 'InitialPriority', 'FinalPriority', 'Requestors', 'Created', 'Starts', 'Started', 'Due', 'Resolved', 'Told', 'LastUpdated', 'TimeEstimated', 'TimeWorked', 'TimeLeft', 'Cc', 'AdminCc'];
+  //converts a query to a function that accepts tickets and returns true or false
+  function toFunction(query){
+    var funString = query.replace(/AND/g, '&&');
+    funString = funString.replace(/OR/g, '||');
+    funString = funString.replace(/NOT/g, '!');
+    funString = funString.replace(/=/g, '==');
+    funString = funString.replace(/<==/g, '<=');
+    funString = funString.replace(/>==/g, '>=');
+    funString = funString.replace(/<>/g, '!=');
+    for (var i = 0; i < ticketFields.length; i++){
+      funString = funString.replace(ticketFields[i], 'ticket.'+ ticketFieldsString[i]);
+    }
 
+    funString = 'return ' + funString;
+    return new Function('ticket', funString);
+  }
+
+  //binary search to insert objects at the lowest possible point
   function binarylower(obj, f, m, l, u) {
     var mid;
     if(l<=u)
@@ -477,17 +532,19 @@ function showDropMerge(btn, id) {
       return l;
     }
   }
-  //checks if two objects are equal
+
+  //checks if two tickets are equal 
+  //NOTE: not all fields of an ticket are checked. some like: LastUpdated are ignored on purpose.
+  // only fields that are actually displayed must trigger an update. 
   function needsUpdate(a, b) {
     if (a == undefined || b == undefined){
       return true;
     }
-    var Props = ["Queue", "Subject", "Owner", "Creator", "TimeEstimated", "Status", "Priority"];
+    var Props = ["Queue", "Subject", "Owner", "Creator", "TimeEstimated", "Status", "Priority", "minute", "hour"];
 
     for (var i = 0; i < Props.length; i++) {
       var propName = Props[i];
       if (a[propName] != b[propName]) {
-        console.log(a[propName] + " != " +  b[propName]);
         return true;
       }
     }
@@ -496,7 +553,7 @@ function showDropMerge(btn, id) {
 
 
   //returns the query (sets Date and CurrentUser)
-  function getQuery(string){
+  function getQuery(string, timeOffSet){
     var d = new Date();
     d.setDate(d.getDate() - timeOffSet);
     var date = d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate();
@@ -517,8 +574,6 @@ function showDropMerge(btn, id) {
         if (autocompleteValues[i]['value'] == id){
           index = i;
           i = autocompleteValues.length;
-          console.log('autocomplete found');
-          console.log(autocompleteValues[i]);
         }
       }
       if (index > -1){
@@ -538,7 +593,7 @@ function showDropMerge(btn, id) {
     return split( term ).pop();
   }
 
-//Ilustrat stuff
+  //Ilustrat stuff
   function invertColor(hexTripletColor) {
       var color = hexTripletColor;
       color = color.substring(1);           // remove #
@@ -677,6 +732,7 @@ function showDropMerge(btn, id) {
 
   //gets a ticket and checks if it needs an update.
   function getAndUpdateTicket(id){
+    /*
     var query = '((' + Columns[0]['Query'] + ')';
     for (var i = 1; i < Columns.length; i++){
       query += 'OR (' + Columns[i]['Query'] + ')';
@@ -687,7 +743,10 @@ function showDropMerge(btn, id) {
 
     (function(id){
       $.ajax({
-        url:"<%RT->Config->Get('WebPath')%>/REST/1.0/search/ticket?query=" + query,
+        url:"<%RT->Config->Get('WebPath')%>/REST/1.0/search/ticket?query=" + query, */
+    (function(id){
+      $.ajax({
+        url:"<%RT->Config->Get('WebPath')%>/REST/1.0/ticket/" + id,
         async: true,
         success: function (output) {
           var split = output.split("--");
@@ -697,6 +756,7 @@ function showDropMerge(btn, id) {
             }
             var oldTicket = ticketCache[id];
             var newTicket = parseTicket(split[0]);
+
             if (newTicket == undefined){
               console.log("ticket: " + id + " undefined and therefore deleted");
               //ticket got deleted
@@ -704,6 +764,24 @@ function showDropMerge(btn, id) {
               deleteTicket(oldTicket);
               return;
             }
+
+
+            //TODO check which lane and if any lane if no lane then delete the ticket
+            //Gets the correct lane to insert this Ticket.
+            var lane = -1;
+            for (var i = 0; i < Columns.length; i++){
+              if (toFunction(getQuery(Columns[i].Query, Columns[i].timeOffSet))(newTicket)){
+                lane = i;
+                break;
+              } 
+            }
+            newTicket.lane = lane;
+            //ticket fits into no lane
+            if (lane == -1){
+              deleteTicket(newTicket);
+              return;
+            }
+
             if (oldTicket == undefined){
               //ticket is new
               console.log("new ticket: " + id);
@@ -712,17 +790,20 @@ function showDropMerge(btn, id) {
             }
             if (needsUpdate(oldTicket, newTicket)){
               console.log("ticket updated: " + id);
-              if (oldTicket['Priority'] === newTicket['Priority'] && oldTicket['Status'] === newTicket['Status']){
-                //priority is unchanged
-                //replace ticket
-                ticketCache[id] = newTicket;
-                $("#"+newTicket['id']).replaceWith(templateTicket(newTicket));
-                //TODO check filters
-              }else{
+            //  if (oldTicket['Priority'] === newTicket['Priority'] && oldTicket['Status'] === newTicket['Status']){
+            //    //priority is unchanged
+            //    //replace ticket
+            //    ticketCache[id] = newTicket;
+            //    $("#"+newTicket['id']).replaceWith(templateTicket(newTicket));
+            //    //TODO check filters
+            //  }else{
                 //priority is changed
                 //find new position of the ticket
                 updateTicketPosition(newTicket);
-              }
+             // }
+            }else{
+              //no gui updates needed, hower, some other values might have changed
+              ticketCache[id] = newTicket;
             }
           }else{
             console.log("ticket: " + id + " deleted");
@@ -753,47 +834,52 @@ function showDropMerge(btn, id) {
     if (ticket['id'] == undefined){
       return undefined;
     }
+    ticket['id'] = ticket['id'].split('/')[1];
+    calcCustomTicketValues(ticket);
+    return ticket;
+  }
+  function calcCustomTicketValues(ticket){
     ticket['Priority'] = parseInt(ticket['Priority']);
     ticket["Color"] = "#" + intToRGB(parseInt("0x" + md5(ticket["Owner"]).substring(0,8)));
     ticket["ColorInverse"] = invertColor(ticket["Color"]);
     ticket["ColorBright"] =  "#" + intToBrightRGB(parseInt("0x" + md5(ticket["Queue"]).substring(0,8)));
-    ticket['id'] = ticket['id'].split('/')[1];
     ticket['TimeEstimated'] = ticket['TimeEstimated'].split(' ')[0];
     ticket['hour'] = Math.floor( parseInt(ticket['TimeEstimated']) / 60);
     ticket['minute'] = parseInt(ticket['TimeEstimated']) % 60;
-    ticket['Creator'] = ticket['Creator'].substring(0,10);
-    return ticket;
+    ticket['Creator'] = ticket['Creator'].substring(0, <% $cutCreatorName %>);
   }
+
   //removes old ticket and creates new one
   function updateTicketPosition(ticket){
+    console.log('update ticket position');
+    //update custom ticket values
+    calcCustomTicketValues(ticket);
     //update cache
     ticketCache[ticket['id']] = ticket;
     //remove old view
     $("#" + ticket['id']).remove();
     //create new view
     var newTicketView = templateTicket(ticket);
+
     insertTicket(ticket, newTicketView);
   }
   //inserts a ticket and recalculate the correct possition
   function insertTicket(ticket, newTicketView){
-    var column = ColumnLookup[ticket['Status']].children();
-  //  console.log(column.length);
-    //console.log(column);
-  //  console.log(newTicketView);
+    var column = Columns[ticket.lane].view;
     if (column.length > 0){ //insert via binary search
       var getPriority = function(ticketView){
         //return ticketCache[$(ticketView).attr('id')]['Priority'];
         return ticketCache[ticketView.id]['Priority'];
       }
-      var index = binarylower(column, getPriority, ticket['Priority'], 0, column.length);
-
-      if (index >= column.length){
-        ColumnLookup[ticket['Status']].append(newTicketView);      
+      var index = binarylower(column.children(), getPriority, ticket['Priority'], 0, column.children().length);
+      if (index >= column.children().length){
+        //insert at the end
+        column.append(newTicketView);  
       }else {
-        $(column[index]).before(newTicketView);
+        $(column.children()[index]).before(newTicketView);
       }
     }else{//it's the first element, just insert it
-        ColumnLookup[ticket['Status']].append(newTicketView);  
+        column.append(newTicketView);  
     }
   }
 
@@ -824,6 +910,7 @@ function showDropMerge(btn, id) {
 
   function initTicket(ticket){
     if (ticketCache[ticket["id"]] == undefined){
+      var column = Columns[ticket.lane].view;
       var newTicketView = templateTicket(ticket);
       ticketCache[ticket['id']] = ticket;            
       autocompleteValues.push({label: "#" + ticket['id'] + ': ' + ticket['Subject'], value: ticket['id']});      
@@ -831,7 +918,7 @@ function showDropMerge(btn, id) {
         ticketViewCache[ticket['id']] = newTicketView;
         hidden.push(ticket['id']);
       }else{
-        ColumnLookup[ticket['Status']].append(newTicketView);
+        column.append(newTicketView);
       }
     }else{
       console.log("Only use this function during the init calls");
@@ -842,15 +929,22 @@ function showDropMerge(btn, id) {
     var lanes = $('#lanes');
 
     for (var i = 0; i < Columns.length; i++){
+      //get id for the column
       Columns[i]['Id'] = "Column_" + i; 
+      //set default timeOffSet
+      if (Columns[i].timeOffSet == undefined){
+        Columns[i].timeOffSet = 5;
+      }
+
       lanes.append(templateColumn(Columns[i]));
       var thisLane = $("#" + Columns[i]['Id']);
-      (function(outerStatus, thisLane){
+      Columns[i].view = thisLane;
+      (function(LaneObject, thisLane, laneID){
         thisLane.sortable({
           connectWith: [".wipDrop"], 
           placeholder: "drop-area",
           receive:function (event, ui) {
-            updatePS(ui["item"]["context"]["id"], outerStatus, thisLane, '');
+            updatePS(ui["item"]["context"]["id"], LaneObject, thisLane, '', laneID);
           },
           start: function(event, ui) {
             ui.item.data('start_pos', ui.item.index());
@@ -859,12 +953,11 @@ function showDropMerge(btn, id) {
             var start_pos = ui.item.data('start_pos');
             if (start_pos != ui.item.index()) {
               if (ui['item']['context'].parentElement == event['target']){
-                updatePS(ui["item"]["context"]["id"], outerStatus, thisLane, '');
+                updatePS(ui["item"]["context"]["id"], LaneObject, thisLane, '', laneID);
               }
             }
           },
           active: function(event, ui){
-            console.log('hello wolrd');
             closeAllDropDown();
           },
           scroll: true,
@@ -878,34 +971,37 @@ function showDropMerge(btn, id) {
             ui.item.data('sortableItem').overflowOffset = ui.placeholder.parent().offset();
           }
         });
-      })(Columns[i]['Status'][0], thisLane);
+      })(Columns[i], thisLane, i);
       
-      var stati = Columns[i]['Status'];
-      for (var j = 0; j < stati.length; j++){
-        ColumnLookup[stati[j]] = thisLane;
-      }
+  //    var stati = Columns[i]['Status'];
+  //    for (var j = 0; j < stati.length; j++){
+  //      ColumnLookup[stati[j]] = thisLane;
+  //    }
     }
   //  var width = Columns.length * 295;
   //  lanes.css({"width":width});
   }
 
-  function updateView() {
+  function initView() {
     for (var i = 0; i < Columns.length; i++){
-      var url = "<%RT->Config->Get('WebPath')%>/REST/1.0/search/ticket?query=" + getQuery(Columns[i]['Query'])+"&orderby=-Priority&format=l";
-      $.ajax({
-        url: url,
-        async: true,
-        success: function (output) {
-          var split = output.split("--");
-          for (var i = 0; i < split.length; i++){
-            if (split[i].indexOf(":") != -1){
-              var ticket = parseTicket(split[i]);
-              initTicket(ticket);
+      var url = "<%RT->Config->Get('WebPath')%>/REST/1.0/search/ticket?query=" + getQuery(Columns[i]['Query'], Columns[i].timeOffSet)+"&orderby=-Priority&format=l";
+      (function (lane){
+        $.ajax({
+          url: url,
+          async: true,
+          success: function (output) {
+            var split = output.split("--");
+            for (var j = 0; j < split.length; j++){
+              if (split[j].indexOf(":") != -1){
+                var ticket = parseTicket(split[j]);
+                ticket.lane = lane;
+                initTicket(ticket);
+              }
             }
+            //TODO error handling
           }
-          //TODO error handling
-        }
-      });
+        });
+      })(i);
     }
   };
 
@@ -936,21 +1032,31 @@ var sequence = undefined;
     };
 
     ws.onmessage = function (msg) {
-      
       var res = JSON.parse(msg.data).updateTicket;
-      console.log(res);
     
       if (!isNaN(res.sequence)) {
         if (sequence == undefined && res['id'] == undefined) {
-          console.log("setting sequence: " + sequence)
           sequence = res.sequence;
         } else if (sequence != res.sequence){
-          location.reload();
+          sequence = res.sequence;
+          ticketCache = {}; 
+          ticketViewCache = {}; //after removing ticket Views are stored in here 
+          autocompleteValues = [];
+          hidden = []; //indices of removed ticketViews
+          filter = {}; //those filters are used to restrict the shown tickets even more
+          
+          Columns = config['lanes'];
+          $('#lanes').empty();
+          initColumns();
+          initView();
+          //initiate the filters
+          $('.filter').keyup();
+    //      location.reload();
         }
       }
      
       if (res['id'] != undefined && !isNaN(res.id)){
-        console.log("updateTicket: " + res.id);
+        console.log("newMessage: update Ticket "+ res.id);
         getAndUpdateTicket(res.id);
         sequence++;
       }  
@@ -965,25 +1071,46 @@ var sequence = undefined;
 //builds the kanban when the page has loaded
   $(document).ready(function() {
     //get configuration
-    var config = JSON.parse($('<textarea />').html(`<% $config %>`).text());
-    //time offset
-    timeOffSet = config['timeOffSet'];
+    var firstKey = (Object.keys(configurations))[0];
+    config = JSON.parse($('<textarea />').html(configurations[firstKey]).text().replace(/(?:\r\n|\r|\n)/g, " "));
     //initiate columns
     Columns = config['lanes'];
     initColumns();
     //Get Tickets
-    updateView(); 
+    initView(); 
     //initiate the filters
     $('.filter').keyup();
     //init websockets
     initWebsockets();   
   });
 
-  $(window).resize(function(){
-    //$('span').text(x += 1);
-    console.log("resize");
-  }); 
+  var configurations = {
+% foreach(@DisplayedKanbans){
+    <% $_ %> : `<% $KanbanConfigs{$_}  %>`,
+%}
+    dummyToAvoidThatLastComma: "empty"
+  }
 
+  function setKanban(obj){
+    var configuration = obj.options[obj.selectedIndex].value;
+    console.log("set to configuration: " +configuration);
+   // console.log($('<textarea />').html(configurations[configuration]).text().replace(/(?:\r\n|\r|\n)/g, " "));
+    config = JSON.parse($('<textarea />').html(configurations[configuration]).text().replace(/(?:\r\n|\r|\n)/g, " "));
+    //clear all the old values
+    ticketCache = {}; 
+    ticketViewCache = {}; //after removing ticket Views are stored in here 
+    autocompleteValues = [];
+    hidden = []; //indices of removed ticketViews
+    filter = {}; //those filters are used to restrict the shown tickets even more
+    
+    Columns = config['lanes'];
+    $('#lanes').empty();
+    initColumns();
+    initView();
+    //initiate the filters
+    $('.filter').keyup();
+  }
+  
 </script>
 
   <div id="main">
@@ -993,6 +1120,11 @@ var sequence = undefined;
     <span>Subject: <input type="text" class="filter" onkeyup="setFilter('Subject', this)"></input></span>
     <span>Queue: <input type="text" class="filter" onkeyup="setFilter('Queue', this)"></input></span>
     <span>ID: <input type="text" class="filter" onkeyup="setFilter('id', this)"></input></span>
+    <span><label for="kanbanselector">Kanban: </label><select id="kanbanselector" onchange="setKanban(this)">
+% foreach(@DisplayedKanbans){
+       <option value="<% $_ %>"><% $_ %></option>  
+%}
+    </select></span>
     <span class="wsStatus">WebSocket status: <span id="wsIndicator" class="circle_red"></span></span>
     <div id="lanes">
     </div>
@@ -1006,49 +1138,81 @@ my $users = RT::Users->new($session{'CurrentUser'});
 $users->LimitToPrivileged;
 
 
-
 # default configuration
 my $config = q(
 {
   "lanes":[
     {
       "Name": "New Open",
-      "Id": "lineNew",
-      "Status": ["open", "new"],
-      "Query": "(Status='open' OR Status='new')"
+      "Query": "(Status='open' OR Status='new')",
+      "Change": {"Status": "open"}
     },
     {
       "Name": "Stalled",
-      "Id": "lineStalled",
-      "Status": ["stalled"],
-      "Query": "(Status='stalled')"
+      "Query": "(Status='stalled')",
+      "Change": {"Status": "stalled"}
     },
     {
       "Name": "Resolved",
-      "Id": "lineResolve",
-      "Status": ["resolved"],
-      "Query": "(Status='resolved') AND (LastUpdated > '{{=it.Date}}')"
+      "Query": "(Status='resolved') AND (LastUpdated > '{{=it.Date}}')",
+      "Change": {"Status": "resolved"}
     },
     {
       "Name": "Rejected",
-      "Id": "lineReject",
-      "Status": ["rejected"],
-      "Query": "(Status='rejected') AND (LastUpdated > '{{=it.Date}}')"
+      "Query": "(Status='rejected') AND (LastUpdated > '{{=it.Date}}')",
+      "Change": {"Status": "rejected"}
     }
-  ],
-  "timeOffSet":7
+  ]
 });
+
+my %KanbanConfigs = (Default => q(
+{
+  "lanes":[
+    {
+      "Name": "New Open",
+      "Query": "(Status='open' OR Status='new')",
+      "Change": {"Status": "open"}
+    },
+    {
+      "Name": "Stalled",
+      "Query": "(Status='stalled')",
+      "Change": {"Status": "stalled"}
+    },
+    {
+      "Name": "Resolved",
+      "Query": "(Status='resolved') AND (LastUpdated > '{{=it.Date}}')",
+      "Change": {"Status": "resolved"}
+    },
+    {
+      "Name": "Rejected",
+      "Query": "(Status='rejected') AND (LastUpdated > '{{=it.Date}}')",
+      "Change": {"Status": "rejected"}
+    }
+  ]
+}));
+
+if (RT->Config->Get('KanbanConfigs')){
+  %KanbanConfigs = RT->Config->Get('KanbanConfigs');
+}
+my @DisplayedKanbans = keys (%KanbanConfigs);
 
 # override default configuration if it is set
 if (RT->Config->Get('KanbanDefault')){
-  $config = RT->Config->Get('KanbanDefault');
+  @DisplayedKanbans = RT->Config->Get('KanbanDefault');
 }
 
 # override default configuration with user specific configuration
 my $userName = $session{'CurrentUser'}->Name;
 my $userConfig = "Kanban_" . $userName;
 if (RT->Config->Get($userConfig)){
-  $config = RT->Config->Get($userConfig);
+  @DisplayedKanbans = RT->Config->Get($userConfig);
+}
+
+
+my $readOnly = 0;
+my $userReadOnly = "KanbanReadOnly_" . $userName;
+if (RT->Config->Get($userReadOnly)){
+  $readOnly = RT->Config->Get($userReadOnly);
 }
 
 my $myPort = -1;
@@ -1056,6 +1220,10 @@ if (RT->Config->Get("WebsocketPort")){
   $myPort = RT->Config->Get("WebsocketPort");
 }
 
+my $cutCreatorName = 10;
+if (RT->Config->Get("cutCreatorName")){
+  $cutCreatorName = RT->Config->Get("cutCreatorName");
+}
 
 </%INIT>
 <%ARGS>
