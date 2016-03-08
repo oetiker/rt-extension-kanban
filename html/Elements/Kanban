@@ -1,9 +1,7 @@
 <&|/Widgets/TitleBox, title => loc('Kanban')&>
 
-
-
-<script type="text/javascript" src="static/js/jquery-1.9.1.min.js"></script>
-<script type="text/javascript" src="static/js/jquery-ui.min.js"></script>
+<script type="text/javascript" src="<%RT->Config->Get('WebPath')%>/static/js/jquery-1.9.1.min.js"></script>
+<script type="text/javascript" src="<%RT->Config->Get('WebPath')%>/static/js/jquery-ui.min.js"></script>
 
 <script>
 
@@ -22,7 +20,6 @@
   var currentUser = "<% $session{'CurrentUser'}->Name %>"; // the current user
   var timeOffSet = 0;
 
-;
 //////////////////////TEMPLATES/////////////////////////
   var templateDropdownLink = doT.template(`
     <div id="DropdownLink" class="dropdown-content">
@@ -71,7 +68,7 @@
             </select>
         </span>
         <span class="title" style="background-color: {{=it.ColorBright}}">
-          <a href="./Ticket/Display.html?id={{=it.id}}">{{=it.Subject}}</a>
+          <a href="<%RT->Config->Get('WebPath')%>/Ticket/Display.html?id={{=it.id}}">{{=it.Subject}}</a>
         </span>
         <span class="footer">
           <span class="estimate">
@@ -163,7 +160,7 @@
       //Tickets are garanted to have a unique priority within their current state
       //Tickets are garanted to have a higher priority than all tickets below them
       //Tickets are garanted to have a lower priority than all tickets above them
-      var prevTicket = ticketCache[ticketField.prev().attr('id')];
+      var prevTicket = ticketCache[ticketField.prev().attr  ('id')];
       var nextPriority = -2147483648;
       var prevPriority = 2147483647;
 
@@ -576,7 +573,7 @@ function showDropMerge(btn, id) {
       arr.forEach(function(val){
         if (!isNaN(val) &&  val != ""){
           $.ajax({
-            url: "./REST/1.0/ticket/" + id + "/merge/" + val,
+            url: "<%RT->Config->Get('WebPath')%>/REST/1.0/ticket/" + id + "/merge/" + val,
             cache: false,
             success: function(data, status, jqXHR){
               getAndUpdateTicket(id);
@@ -606,7 +603,7 @@ function showDropMerge(btn, id) {
             to: val
           }
           $.ajax({
-            url: "./REST/1.0/ticket/link",
+            url: "<%RT->Config->Get('WebPath')%>/REST/1.0/ticket/link",
             data: data,
             cache: false,
             success: function(data, status, jqXHR){
@@ -632,7 +629,7 @@ function showDropMerge(btn, id) {
     var realId = id; 
     (function(id){
       $.ajax({
-        url: "./REST/1.0/ticket/" + realId + "/edit",
+        url: "<%RT->Config->Get('WebPath')%>/REST/1.0/ticket/" + realId + "/edit",
         data: data,
         cache: false,
         success: function(data, status, jqXHR){
@@ -664,7 +661,7 @@ function showDropMerge(btn, id) {
       }
 
       $.ajax({
-        url: "./REST/1.0/ticket/new" ,
+        url: "<%RT->Config->Get('WebPath')%>/REST/1.0/ticket/new" ,
         data: data,
         cache: false,
         success: function(data, status, jqXHR){
@@ -690,7 +687,7 @@ function showDropMerge(btn, id) {
 
     (function(id){
       $.ajax({
-        url:"./REST/1.0/search/ticket?query=" + query,
+        url:"<%RT->Config->Get('WebPath')%>/REST/1.0/search/ticket?query=" + query,
         async: true,
         success: function (output) {
           var split = output.split("--");
@@ -802,7 +799,7 @@ function showDropMerge(btn, id) {
 
 //  function updateTicket(n){
 //    var xmlhttp=new XMLHttpRequest();
-//    xmlhttp.open("GET", "./REST/1.0/ticket/"+n+"/show", true);
+//    xmlhttp.open("GET", "<%RT->Config->Get('WebPath')%>/REST/1.0/ticket/"+n+"/show", true);
 //    xmlhttp.send();
 //    xmlhttp.onreadystatechange=function() {
 //      if (xmlhttp.readyState==4 && xmlhttp.status==200) {
@@ -894,7 +891,7 @@ function showDropMerge(btn, id) {
 
   function updateView() {
     for (var i = 0; i < Columns.length; i++){
-      var url = "./REST/1.0/search/ticket?query=" + getQuery(Columns[i]['Query'])+"&orderby=-Priority&format=l";
+      var url = "<%RT->Config->Get('WebPath')%>/REST/1.0/search/ticket?query=" + getQuery(Columns[i]['Query'])+"&orderby=-Priority&format=l";
       $.ajax({
         url: url,
         async: true,
@@ -916,13 +913,16 @@ var sequence = undefined;
 
   function initWebsockets(){
     // BUG hardcoded path
-    var path = location.protocol.replace('http', 'ws') + location.hostname;
+    var path = location.protocol.replace('http', 'ws') +"//"+ location.hostname;
 %if ($myPort != -1){
     path += ":<%$myPort%>";
 %}else{
-    path += ":"+location.port;
+    if (location.port != "") {
+      path += ":"+location.port;
+    }
 %}
-    path += location.pathname + "websocket";
+    path += "<%RT->Config->Get('WebPath')%>" + "/websocket";
+//     console.log(path)
 
     var ws = new ReconnectingWebSocket(path);
 
