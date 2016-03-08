@@ -16,7 +16,7 @@ Main features:
 This kanban features all typical kanban functions as moving tickes per drag and drop. Depending where you drop tickets, their state will get updated using `REST 1.0`-calls. In each column the tickets are sorted by priority (highest at the top). The kanban-view is updated if tickets are altered using the `rt-coreExtension-websockets` technique. This means that each view is always up to date without any manual reloading.
 
 The view and its behaviour is completely configurable. You can define which columns are shown and which ticket attributes they should represent. You can also define how the ticket is altered when it is dropped in a different column.     
-On top of that: when a ticket _A_ is dropped above another ticket _B_ the Priority of _A_ will be adjusted to be higher than _B_'s. By default, the tickets priority will never be reduced and only increased by the minimum amount to stay at the dropped possition. 
+On top of that: when a ticket _A_ is dropped above another ticket _B_ the Priority of _A_ will be adjusted to be higher than _B_'s. By default, the tickets priority will never be reduced and only increased by the minimum amount to stay at the dropped position. 
 
 # INSTALLATION
 
