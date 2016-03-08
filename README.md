@@ -142,7 +142,7 @@ This example shows a Kanban configuration for a Kanban with 3 lanes:
 }
 ```  
 
-The following example defines two Kanbans. The first one features a lane `IMPORTANT` that contains only tickets with a Priority that is at least 100. Every ticket that is moved into this lane will get at least a priority of 100.
+The following example defines two Kanbans. The first one features a lane `IMPORTANT` that contains only tickets with a Priority that is at least 100. Every ticket that is moved into this lane will get at least a priority of 100. Also whenever a ticket is dropped, the user is informed with 'hello world'. While the `alert('hello world')` can be removed it shows how the interface can be used with javascript code.
 
 The second Kanban features a lane with open/new tickets that have no owner. Also there are two additional lanes for the user `foo` and `bar`. If a ticket is moved into `foo` the owner is changed to `foo`. The same happens with the `bar` lane.
 
