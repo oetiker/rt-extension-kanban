@@ -7,7 +7,7 @@ RT-Extension-Kanban - Adds a Kanban to 'request tracker' which uses jQuery UI an
 Main features:
 
 * realtime updates on all attached browsers: **No more page reloads** powered by WebSockets
-* **darg'n'drop ticket operations**
+* **drag'n'drop ticket operations**
 * **powerful display-filters** which support regular expressions
 * **highly configurable** columns and drop-actions 
 * **Kanban-fullscreen** support for big monitors
