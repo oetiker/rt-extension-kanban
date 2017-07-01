@@ -1,8 +1,5 @@
 <&|/Widgets/TitleBox, title => loc('Kanban')&>
 
-<script type="text/javascript" src="<%RT->Config->Get('WebPath')%>/static/js/jquery-1.9.1.min.js"></script>
-<script type="text/javascript" src="<%RT->Config->Get('WebPath')%>/static/js/jquery-ui.min.js"></script>
-
 <script>
 
 
@@ -109,13 +106,13 @@
   //updates minutes
   function saveTimeMinutes(userID, obj){
       ticket = ticketCache[userID];
-      ticket['minute'] = parseInt($(obj).val());
+      ticket['minute'] = parseInt(jQuery(obj).val());
       saveTicketTime(ticket);
   }
   //updates hours
   function saveTimeHours(userID, obj){
       ticket = ticketCache[userID];
-      ticket['hour'] = parseInt($(obj).val());
+      ticket['hour'] = parseInt(jQuery(obj).val());
       saveTicketTime(ticket);
   }
 
@@ -150,7 +147,7 @@
       ticket["Color"] = "#" + intToRGB(parseInt("0x" + md5(ticket["Owner"]).substring(0,8)));
       ticket["ColorInverse"] = invertColor(ticket["Color"]);
 
-      $(obj).css({'background-color':ticket["Color"],'color':ticket["ColorInverse"]});
+      jQuery(obj).css({'background-color':ticket["Color"],'color':ticket["ColorInverse"]});
 
       var dataStr = "Owner: " + obj.options[obj.selectedIndex].value;
       //update Ticket
@@ -162,7 +159,7 @@
   function updatePS(id, LaneObject, Lane, shift, laneID){
     var ticket = ticketCache[id];
     ticket.lane = laneID;
-    var ticketField = $("#"+id);
+    var ticketField = jQuery("#"+id);
     var nextTicket = ticketCache[ticketField.next().attr('id')];
 
     if (advancedPriority){
@@ -242,11 +239,11 @@
 // Close the dropdown menu if the user clicks outside of it
 //window.onclick = function(event) {
 //  if (!event.target.matches('.dropbtn')) {
-//    $('#DropdownLink').remove();
-//    $('#DropdownMerge').remove(); 
+//    jQuery('#DropdownLink').remove();
+//    jQuery('#DropdownMerge').remove(); 
 //  }
 //}
-$(document).keyup(function(e) {
+jQuery(document).keyup(function(e) {
   if (e.keyCode == 27) { 
     closeAllDropDown();
   }
@@ -254,27 +251,27 @@ $(document).keyup(function(e) {
 var linkDropDownOpen = false;
 
 function closeAllDropDown(){  
-    $("#DropdownMerge").remove();
-    $("#DropdownLink").remove();
+    jQuery("#DropdownMerge").remove();
+    jQuery("#DropdownLink").remove();
 }
 
 function showDropLink(btn, id) {
-  if ($(btn).next().length == 0 || !linkDropDownOpen){
+  if (jQuery(btn).next().length == 0 || !linkDropDownOpen){
     linkDropDownOpen = true;
     closeAllDropDown();
     var tropdown = templateDropdownLink();
-    $(btn).after(tropdown);
-    $('#dependsOn').focus();
+    jQuery(btn).after(tropdown);
+    jQuery('#dependsOn').focus();
     dropdownMenu = tropdown;
-    $(".auto").bind( "keydown", function( event ) {
+    jQuery(".auto").bind( "keydown", function( event ) {
       if (event != undefined){
         if (event.keyCode === 13){
-          if (! $( this ).autocomplete( "instance" ).menu.active ) {
-            link(id, this.id, split($(this).val().trim()));
+          if (! jQuery( this ).autocomplete( "instance" ).menu.active ) {
+            link(id, this.id, split(jQuery(this).val().trim()));
             closeAllDropDown();
           }
-        }else if ( event.keyCode === $.ui.keyCode.TAB &&
-            $( this ).autocomplete( "instance" ).menu.active ) {
+        }else if ( event.keyCode === jQuery.ui.keyCode.TAB &&
+            jQuery( this ).autocomplete( "instance" ).menu.active ) {
           event.preventDefault();
         }
       }
@@ -283,7 +280,7 @@ function showDropLink(btn, id) {
       delay: 0,
       source: function( request, response ) {
         // delegate back to autocomplete, but extract the last term
-        var results =$.ui.autocomplete.filter(
+        var results =jQuery.ui.autocomplete.filter(
           autocompleteValues, extractLast( request.term ) );
 
         var allValues = split(request.term);
@@ -326,23 +323,23 @@ function showDropLink(btn, id) {
 
 
 function showDropMerge(btn, id) {
-  if ($(btn).next().next().length == 0 || linkDropDownOpen){
+  if (jQuery(btn).next().next().length == 0 || linkDropDownOpen){
     closeAllDropDown();
     linkDropDownOpen = false;
     var tropdown = templateDropdownMerge();
-    $(btn).parent().append(tropdown);
-    $('#merge').focus();
+    jQuery(btn).parent().append(tropdown);
+    jQuery('#merge').focus();
     dropdownMenu = tropdown;
-    $(".auto").bind( "keydown", function( event ) {
+    jQuery(".auto").bind( "keydown", function( event ) {
       if (event.keyCode == 13){
-        if (! $( this ).autocomplete( "instance" ).menu.active ) {
-          merge(id, split($(this).val().trim()));
+        if (! jQuery( this ).autocomplete( "instance" ).menu.active ) {
+          merge(id, split(jQuery(this).val().trim()));
           closeAllDropDown();
         }
         return;
       }
-      if ( event.keyCode === $.ui.keyCode.TAB &&
-          $( this ).autocomplete( "instance" ).menu.active ) {
+      if ( event.keyCode === jQuery.ui.keyCode.TAB &&
+          jQuery( this ).autocomplete( "instance" ).menu.active ) {
         event.preventDefault();
       }
     }).autocomplete({
@@ -350,7 +347,7 @@ function showDropMerge(btn, id) {
       delay: 0,
       source: function( request, response ) {
         // delegate back to autocomplete
-        var results =$.ui.autocomplete.filter(
+        var results =jQuery.ui.autocomplete.filter(
           autocompleteValues, request.term );
         results = results.filter(function(el){
         //filter the current ticket
@@ -387,23 +384,23 @@ function showDropMerge(btn, id) {
 //////////////////USERINPUT FOR KANBAN //////////////
   var fullscreen = false;
   function toggleFullScreen(){
-    var main = $('#main');
+    var main = jQuery('#main');
     //TODO load/unload external css file
     if (!fullscreen){
       main.css({'width':'100%', 'height':'100%', 'position':'fixed', 'top':'0', 'left':'0', 'z-index':'9000', 'background-color':'white', 'bottom':'0px', 'right':'0px'});
-      $('body').css('overflow', 'hidden');
-      $('#page-navigation').hide();
-      $('#main-navigation').hide();
-      $('ul.tasks').css('overflow-y', 'scroll');
-      $('#lanes').css('height', '80vh');
+      jQuery('body').css('overflow', 'hidden');
+      jQuery('#page-navigation').hide();
+      jQuery('#main-navigation').hide();
+      jQuery('ul.tasks').css('overflow-y', 'scroll');
+      jQuery('#lanes').css('height', '80vh');
       fullscreen = true;
     }else{
       main.css({'width':'', 'height':'', 'position':'', 'top':'', 'left':'', 'z-index':'', 'background-color':'', 'bottom':'', 'right':''});
-      $('#page-navigation').show();
-      $('#main-navigation').show();
-      $('body').css('overflow','');
-      $('ul.tasks').css('overflow-y', '');
-      $('#lanes').css('height', '');
+      jQuery('#page-navigation').show();
+      jQuery('#main-navigation').show();
+      jQuery('body').css('overflow','');
+      jQuery('ul.tasks').css('overflow-y', '');
+      jQuery('#lanes').css('height', '');
       fullscreen = false;
     }
   }
@@ -433,12 +430,12 @@ function showDropMerge(btn, id) {
   //removes all tickets that don't apply to the filter object
  // function applyFilter(){
  //   //removes all tickets that are 
- //   $('.ticket').each(function(index){
- //     var id = $(this).attr('id');
+ //   jQuery('.ticket').each(function(index){
+ //     var id = jQuery(this).attr('id');
  //     var ticket = ticketCache[id];
  //     if (!testFilter(ticket)){
  //       ticketViewCache[id] = this;
- //       $(this).detach();
+ //       jQuery(this).detach();
  //       hidden.push(id);
  //     }
  //   });
@@ -449,7 +446,7 @@ function showDropMerge(btn, id) {
   //sets one attribute of the Filter to the value of the given <input>
   function setFilter(name, input){
     //set new filter
-    newVal = $(input).val().trim();
+    newVal = jQuery(input).val().trim();
     newWords = newVal.split(/\s+/).filter(Boolean);
     filter[name] = newVal;
     filters = Object.keys(filter)
@@ -458,15 +455,15 @@ function showDropMerge(btn, id) {
 
     //check the visible elements
     var newHidden = [];
-    $('.ticket').each(function(index){
-      var id = $(this).attr('id');
+    jQuery('.ticket').each(function(index){
+      var id = jQuery(this).attr('id');
       var ticket = ticketCache[id];
       if (!testFilter(ticket)){
         ticketViewCache[id] = this;
  //       this.remove();
-   //     $(this).empty();
-        $(this).remove();
-   //     $(this).detach();
+   //     jQuery(this).empty();
+        jQuery(this).remove();
+   //     jQuery(this).detach();
   //      console.log('hidden push: ' + id);
         newHidden.push(id);
       }
@@ -488,8 +485,8 @@ function showDropMerge(btn, id) {
   }
 
   function clearFilter(){
-    $('.filter').val('');
-    $('.filter').keyup();
+    jQuery('.filter').val('');
+    jQuery('.filter').keyup();
     filters = {};
   }
 
@@ -581,7 +578,7 @@ function showDropMerge(btn, id) {
       }
       delete ticketCache[id];
       delete ticketViewCache[id];
-      $("#" + id).remove();
+      jQuery("#" + id).remove();
     }
   }
 
@@ -627,7 +624,7 @@ function showDropMerge(btn, id) {
     if (arr.length > 0){
       arr.forEach(function(val){
         if (!isNaN(val) &&  val != ""){
-          $.ajax({
+          jQuery.ajax({
             url: "<%RT->Config->Get('WebPath')%>/REST/1.0/ticket/" + id + "/merge/" + val,
             cache: false,
             success: function(data, status, jqXHR){
@@ -657,7 +654,7 @@ function showDropMerge(btn, id) {
             rel: rel,
             to: val
           }
-          $.ajax({
+          jQuery.ajax({
             url: "<%RT->Config->Get('WebPath')%>/REST/1.0/ticket/link",
             data: data,
             cache: false,
@@ -683,7 +680,7 @@ function showDropMerge(btn, id) {
     }
     var realId = id; 
     (function(id){
-      $.ajax({
+      jQuery.ajax({
         url: "<%RT->Config->Get('WebPath')%>/REST/1.0/ticket/" + realId + "/edit",
         data: data,
         cache: false,
@@ -715,7 +712,7 @@ function showDropMerge(btn, id) {
         content: dataStr
       }
 
-      $.ajax({
+      jQuery.ajax({
         url: "<%RT->Config->Get('WebPath')%>/REST/1.0/ticket/new" ,
         data: data,
         cache: false,
@@ -742,10 +739,10 @@ function showDropMerge(btn, id) {
     query += "&orderby=-Priority&format=l";
 
     (function(id){
-      $.ajax({
+      jQuery.ajax({
         url:"<%RT->Config->Get('WebPath')%>/REST/1.0/search/ticket?query=" + query, */
     (function(id){
-      $.ajax({
+      jQuery.ajax({
         url:"<%RT->Config->Get('WebPath')%>/REST/1.0/ticket/" + id,
         async: true,
         success: function (output) {
@@ -794,7 +791,7 @@ function showDropMerge(btn, id) {
             //    //priority is unchanged
             //    //replace ticket
             //    ticketCache[id] = newTicket;
-            //    $("#"+newTicket['id']).replaceWith(templateTicket(newTicket));
+            //    jQuery("#"+newTicket['id']).replaceWith(templateTicket(newTicket));
             //    //TODO check filters
             //  }else{
                 //priority is changed
@@ -857,7 +854,7 @@ function showDropMerge(btn, id) {
     //update cache
     ticketCache[ticket['id']] = ticket;
     //remove old view
-    $("#" + ticket['id']).remove();
+    jQuery("#" + ticket['id']).remove();
     //create new view
     var newTicketView = templateTicket(ticket);
 
@@ -868,7 +865,7 @@ function showDropMerge(btn, id) {
     var column = Columns[ticket.lane].view;
     if (column.length > 0){ //insert via binary search
       var getPriority = function(ticketView){
-        //return ticketCache[$(ticketView).attr('id')]['Priority'];
+        //return ticketCache[jQuery(ticketView).attr('id')]['Priority'];
         return ticketCache[ticketView.id]['Priority'];
       }
       var index = binarylower(column.children(), getPriority, ticket['Priority'], 0, column.children().length);
@@ -876,7 +873,7 @@ function showDropMerge(btn, id) {
         //insert at the end
         column.append(newTicketView);  
       }else {
-        $(column.children()[index]).before(newTicketView);
+        jQuery(column.children()[index]).before(newTicketView);
       }
     }else{//it's the first element, just insert it
         column.append(newTicketView);  
@@ -926,7 +923,7 @@ function showDropMerge(btn, id) {
   }
 
   function initColumns() {
-    var lanes = $('#lanes');
+    var lanes = jQuery('#lanes');
 
     for (var i = 0; i < Columns.length; i++){
       //get id for the column
@@ -937,7 +934,7 @@ function showDropMerge(btn, id) {
       }
 
       lanes.append(templateColumn(Columns[i]));
-      var thisLane = $("#" + Columns[i]['Id']);
+      var thisLane = jQuery("#" + Columns[i]['Id']);
       Columns[i].view = thisLane;
       (function(LaneObject, thisLane, laneID){
         thisLane.sortable({
@@ -986,7 +983,7 @@ function showDropMerge(btn, id) {
     for (var i = 0; i < Columns.length; i++){
       var url = "<%RT->Config->Get('WebPath')%>/REST/1.0/search/ticket?query=" + getQuery(Columns[i]['Query'], Columns[i].timeOffSet)+"&orderby=-Priority&format=l";
       (function (lane){
-        $.ajax({
+        jQuery.ajax({
           url: url,
           async: true,
           success: function (output) {
@@ -1024,7 +1021,7 @@ var sequence = undefined;
 
     ws.onopen = function () {
       console.log('Connection opened');
-      $('#wsIndicator').removeClass('circle_red').addClass('circle_green');
+      jQuery('#wsIndicator').removeClass('circle_red').addClass('circle_green');
 
       setInterval(function() {
         ws.send("Keep alive from client"  );
@@ -1046,11 +1043,11 @@ var sequence = undefined;
           filter = {}; //those filters are used to restrict the shown tickets even more
           
           Columns = config['lanes'];
-          $('#lanes').empty();
+          jQuery('#lanes').empty();
           initColumns();
           initView();
           //initiate the filters
-          $('.filter').keyup();
+          jQuery('.filter').keyup();
     //      location.reload();
         }
       }
@@ -1062,24 +1059,24 @@ var sequence = undefined;
       }  
     };
     ws.onclose = function (msg) {
-     $('#wsIndicator').removeClass('circle_green').addClass('circle_red');
+     jQuery('#wsIndicator').removeClass('circle_green').addClass('circle_red');
       console.log('Connection closed');
     };
 
   }
 
 //builds the kanban when the page has loaded
-  $(document).ready(function() {
+  jQuery(document).ready(function() {
     //get configuration
     var firstKey = (Object.keys(configurations))[0];
-    config = JSON.parse($('<textarea />').html(configurations[firstKey]).text().replace(/(?:\r\n|\r|\n)/g, " "));
+    config = JSON.parse(jQuery('<textarea />').html(configurations[firstKey]).text().replace(/(?:\r\n|\r|\n)/g, " "));
     //initiate columns
     Columns = config['lanes'];
     initColumns();
     //Get Tickets
     initView(); 
     //initiate the filters
-    $('.filter').keyup();
+    jQuery('.filter').keyup();
     //init websockets
     initWebsockets();   
   });
@@ -1094,8 +1091,8 @@ var sequence = undefined;
   function setKanban(obj){
     var configuration = obj.options[obj.selectedIndex].value;
     console.log("set to configuration: " +configuration);
-   // console.log($('<textarea />').html(configurations[configuration]).text().replace(/(?:\r\n|\r|\n)/g, " "));
-    config = JSON.parse($('<textarea />').html(configurations[configuration]).text().replace(/(?:\r\n|\r|\n)/g, " "));
+   // console.log(jQuery('<textarea />').html(configurations[configuration]).text().replace(/(?:\r\n|\r|\n)/g, " "));
+    config = JSON.parse(jQuery('<textarea />').html(configurations[configuration]).text().replace(/(?:\r\n|\r|\n)/g, " "));
     //clear all the old values
     ticketCache = {}; 
     ticketViewCache = {}; //after removing ticket Views are stored in here 
@@ -1104,11 +1101,11 @@ var sequence = undefined;
     filter = {}; //those filters are used to restrict the shown tickets even more
     
     Columns = config['lanes'];
-    $('#lanes').empty();
+    jQuery('#lanes').empty();
     initColumns();
     initView();
     //initiate the filters
-    $('.filter').keyup();
+    jQuery('.filter').keyup();
   }
   
 </script>
